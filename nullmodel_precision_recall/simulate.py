@@ -148,11 +148,9 @@ def plot_simulations(n_sim: int,
         Must be between 0 and 1.
         Defualt is 0.0.
     tresh : float
-        Classification treshold when using `acc` to rig the model. Consider
-        a data point positive when `y_score >= tresh`.
+        Classification treshold when using `acc` to rig the model.
         Must be between 0 and 1.
         Defualt is 0.5.
-
     plot_all : boolean
         Wether to plot all simulations.
         Defualt is False.
@@ -187,6 +185,5 @@ def plot_simulations(n_sim: int,
     ps, rs = np.hstack(simulated_curves)
 
     g = g + geom_step(aes(rs, ps, group=group), alpha=1/n_sim)
-
     g.show()
 
