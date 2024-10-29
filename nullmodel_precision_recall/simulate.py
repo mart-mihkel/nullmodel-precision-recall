@@ -1,12 +1,17 @@
 import numpy as np
 
-from plotnine import ggplot, aes, labs, geom_step
+from plotnine import ggplot, aes, ggtitle, labs, geom_step
 
 
-def __randomize_score(score, y=None, acc=0.0, threshold=0.5):
+def __randomize_score(
+        score: np.ndarray | list,
+        y=None, 
+        acc=0.0, 
+        threshold=0.5
+) -> np.ndarray:
     """
     Randomly permute scores. Rig the scores for the model to have accuracy of
-    at least `acc` with treshold of `tresh` if provided.
+    at least `acc` with treshold of `threshold` if provided.
     """
     score = np.random.permutation(score)
 
@@ -49,11 +54,13 @@ def __decreasing(p, r):
     return p[idx], r[idx]
 
 
-def simulate_nullmodels(n_sim: int,
-                        n_samp: int,
-                        ppos=0.5,
-                        acc=0.0,
-                        threshold=0.5) -> tuple[np.ndarray, np.ndarray]:
+def simulate_nullmodels(
+    n_sim: int,
+    n_samp: int,
+    ppos=0.5,
+    acc=0.0,
+    threshold=0.5
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Simulate nullmodels
 
@@ -83,20 +90,31 @@ def simulate_nullmodels(n_sim: int,
     (y_true, y_scores) : tuple
         Tuple of true labels with shape (n_samp,) and simulated nullmodel
         scores with shape (n_sim, n_samp).
+
+    Examples
+    --------
+    >>> n_simulations = 10
+    >>> n_samples = 100
+    >>> y_true, y_scores = simulate_nullmodels(n_simulations, n_samples)
     """
     n_pos = int(ppos * n_samp)
+    n_neg = n_samp - n_pos
 
-    y_true = np.repeat((0, 1), (n_samp - n_pos, n_pos))
+    y_true = np.repeat((0, 1), (n_neg, n_pos))
     init_scores = np.tile(np.linspace(0, 1, num=n_samp), n_sim) \
                     .reshape((n_sim, n_samp))
 
-    y_scores = [__randomize_score(s, y_true, acc, threshold) for s in init_scores]
+    y_scores = np.array(
+        [__randomize_score(s, y_true, acc, threshold) for s in init_scores]
+    )
 
-    return y_true, np.array(y_scores)
+    return y_true, y_scores
 
 
-def pr_curve(y_true: np.ndarray,
-             y_score: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def pr_curve(
+    y_true: np.ndarray,
+    y_score: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute precision recall curve.
 
@@ -112,13 +130,19 @@ def pr_curve(y_true: np.ndarray,
     -------
     (precision, recall, thresholds) : tuple
         Precision recall points at given classification thresholds.
+
+    Examples
+    --------
+    >>> y_true, y_scores = simulate_nullmodels(1, 100)
+    >>> y_score = y_scores[0]
+    >>> prec, rec, thresholds = pr_curve(y_true, y_score)
     """
     thresholds = np.sort(y_score)
     pred = np.less_equal.outer(thresholds, y_score)
 
-    t_pos = np.array([y_true[p].sum() for p in pred])
     p_pos = pred.sum(axis=1)
     n_pos = y_true.sum()
+    t_pos = np.array([y_true[p].sum() for p in pred])
 
     prec = t_pos / p_pos
     rec = t_pos / n_pos
@@ -126,7 +150,11 @@ def pr_curve(y_true: np.ndarray,
     return prec, rec, thresholds
 
 
-def pr_curve_quantile(curves, q, n_knots=50) -> tuple[np.ndarray, np.ndarray]:
+def pr_curve_quantile(
+    curves: np.ndarray | list,
+    q=0.9,
+    n_knots=50
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute q-th quantile of precision recall curves.
 
@@ -136,6 +164,7 @@ def pr_curve_quantile(curves, q, n_knots=50) -> tuple[np.ndarray, np.ndarray]:
         Array of (precision, recall) tuples.
     q : float
         Quantile to compute.
+        Default is 0.9.
     n_knots : integer
         Number of interpolation knots.
         Defualt is 50.
@@ -145,20 +174,29 @@ def pr_curve_quantile(curves, q, n_knots=50) -> tuple[np.ndarray, np.ndarray]:
     (precision, recall) : tuple
         Precision recall curve, with precision = q-th quantile of precisions
         and recall = interpolation knots.
+
+    Examples
+    --------
+    >>> quantile = 0.9
+    >>> y_true, y_scores = simulate_nullmodels(10, 100)
+    >>> pr_curves = [pr_curve(y_true, s) for s in y_scores]
+    >>> prec_q, rec_q = pr_curve_quantile(curves, q=quantile)
     """
     knots = np.linspace(0, 1, num=n_knots)
-    dec = [__decreasing(p, r) for p, r in curves]
+    dec = [__decreasing(c[0], c[1]) for c in curves]
     interps = [np.interp(knots, xp=r[::-1], fp=p)[::-1] for p, r in dec]
     return np.quantile(interps, q=q, axis=0), knots
 
 
-def plot_simulations(n_sim: int,
-                     n_samp: int,
-                     ppos=0.5,
-                     acc=0.0,
-                     q=0.9,
-                     threshold=0.5,
-                     plot_all=False):
+def plot_simulations(
+    n_sim: int,
+    n_samp: int,
+    ppos=0.5,
+    acc=0.0,
+    q=0.9,
+    threshold=0.5,
+    plot_all=False
+) -> ggplot:
     """
     Simulate nullmodels and plot q-th quantile of results.
 
@@ -177,6 +215,9 @@ def plot_simulations(n_sim: int,
         a treshold of `threshold`.
         Must be between 0 and 1.
         Defualt is 0.0.
+    q : float
+        Quantile of simulations to plot.
+        Default is 0.9.
     threshold : float
         Classification treshold when using `acc` to rig the model.
         Must be between 0 and 1.
@@ -187,32 +228,30 @@ def plot_simulations(n_sim: int,
 
     Returns
     -------
-    ggplot : ggplot
+    fig : ggplot
         ggplot figure with simulations
 
     Examples
     -------
-    >>> from nullmodel_precision_recall import plot_simulations
-    >>> plot_simulations(100, 1000, ppos=0.5, acc=0.0)
+    >>> n_simulations = 100
+    >>> n_samples = 1000
+    >>> plot_simulations(n_simulations, n_samples)
     """
     y_true, y_scores = simulate_nullmodels(n_sim, n_samp, ppos, acc, threshold)
+    simulated_curves = [pr_curve(y_true, y_s) for y_s in y_scores]
+    prec_q, rec_q = pr_curve_quantile(simulated_curves, q)
 
-    simulated_curves = [pr_curve(y_true, y_s)[:2]
-                        for y_s
-                        in y_scores]
-
-    pq, rq = pr_curve_quantile(simulated_curves, q)
-
-    title = f'n_sim={n_sim} n_samp={n_samp} ppos={ppos} acc={acc} q={q}'
-    g = ggplot() + labs(x='recall', y='precision', title=title)
-    g = g + geom_step(aes(rq, pq))
+    g = ggplot() 
+    g += ggtitle(f'n_sim={n_sim} n_samp={n_samp} ppos={ppos} acc={acc} q={q}')
+    g += labs(x='recall', y='precision')
+    g += geom_step(aes(rec_q, prec_q))
 
     if not plot_all:
         return g
 
-    lens = [ps.shape[0] for ps, _ in simulated_curves]
-    group = np.repeat(np.arange(n_sim), lens)
-    ps, rs = np.hstack(simulated_curves)
+    shapes = [c[0].shape[0] for c in simulated_curves]
+    group = np.repeat(np.arange(n_sim), shapes)
+    precs, recs = np.hstack(simulated_curves)
 
-    return g + geom_step(aes(rs, ps, group=group), alpha=1/n_sim)
+    return g + geom_step(aes(recs, precs, group=group), alpha=1/n_sim)
 
